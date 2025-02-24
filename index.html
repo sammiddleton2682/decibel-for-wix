@@ -1,85 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Decibel Meter</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      text-align: center;
-      background: #222;
-      color: #fff;
-      padding-top: 50px;
-    }
-    #meter {
-      font-size: 3em;
-      margin: 20px 0;
-    }
-    #start-btn {
-      padding: 10px 20px;
-      font-size: 1.2em;
-      cursor: pointer;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Decibel Meter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        .meter {
+            font-size: 24px;
+            margin-top: 20px;
+        }
+        .highlight {
+            font-size: 30px;
+            font-weight: bold;
+            color: red;
+        }
+    </style>
 </head>
 <body>
-  <h1>Decibel Meter</h1>
-  <button id="start-btn">Start Meter</button>
-  <div id="meter">0.0 dB</div>
-  
-  <script>
-    const startBtn = document.getElementById('start-btn');
-    const meterDisplay = document.getElementById('meter');
+    <h2>Live Decibel Meter</h2>
+    <p>Current Sound Level: <span id="decibel">0</span> dB</p>
+    <p>Highest Sound Level: <span id="max-decibel" class="highlight">0</span> dB</p>
+    <button onclick="startDecibelMeter()">Start</button>
+    
+    <script>
+        let maxDecibel = 0;
 
-    startBtn.addEventListener('click', async () => {
-      // Hide the button after starting
-      startBtn.style.display = 'none';
-      
-      // Check for browser support
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        meterDisplay.innerText = 'Error: getUserMedia is not supported in this browser.';
-        return;
-      }
-      
-      try {
-        // Request microphone access on user gesture
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048;
-        const dataArray = new Float32Array(analyser.fftSize);
-        const source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyser);
-        
-        let maxDecibel = -Infinity;
-        
-        // Function to update the meter display
-        function updateMeter() {
-          analyser.getFloatTimeDomainData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i] * dataArray[i];
-          }
-          const rms = Math.sqrt(sum / dataArray.length);
-          let dB = 20 * Math.log10(rms);
-          if (!isFinite(dB)) {
-            dB = -100; // Fallback if no sound is detected
-          }
-          // Log the highest (loudest) sound encountered
-          if (dB > maxDecibel) {
-            maxDecibel = dB;
-          }
-          meterDisplay.innerText = maxDecibel.toFixed(1) + " dB";
-          requestAnimationFrame(updateMeter);
+        async function startDecibelMeter() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const analyser = audioContext.createAnalyser();
+                const microphone = audioContext.createMediaStreamSource(stream);
+                const scriptProcessor = audioContext.createScriptProcessor(256, 1, 1);
+                
+                analyser.smoothingTimeConstant = 0.8;
+                analyser.fftSize = 512;
+                
+                microphone.connect(analyser);
+                analyser.connect(scriptProcessor);
+                scriptProcessor.connect(audioContext.destination);
+                
+                scriptProcessor.onaudioprocess = function () {
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(dataArray);
+                    let values = 0;
+                    let length = dataArray.length;
+                    for (let i = 0; i < length; i++) {
+                        values += dataArray[i];
+                    }
+                    let average = values / length;
+                    let decibels = Math.round(average);
+                    document.getElementById('decibel').innerText = decibels;
+                    
+                    if (decibels > maxDecibel) {
+                        maxDecibel = decibels;
+                        document.getElementById('max-decibel').innerText = maxDecibel;
+                    }
+                };
+            } catch (error) {
+                alert("Microphone access denied or unavailable.");
+                console.error(error);
+            }
         }
-        
-        updateMeter();
-        
-      } catch (err) {
-        meterDisplay.innerText = "Microphone access error: " + err.message;
-        console.error('Microphone access error:', err);
-      }
-    });
-  </script>
+    </script>
 </body>
 </html>
